@@ -4,34 +4,54 @@ import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.DumperOptions
 
 
-
-class TemplateInspectorGV {
-
-	def static templateUri="D:/new.xml";
-	def static y = [:];
-	def static t = new XmlSlurper().parse(templateUri)
-	def static processorGroupMap = [:];
+def cli = new CliBuilder(usage: 'groovy NiFiDeploy.groovy [options]',
+                         header: 'Options:')
+cli.with {
+  t longOpt: 'template', 'Template URI (override)',
+    args:1, argName:'uri', type:String.class
+  f longOpt: 'file',
+	'Properties File',
+	args:1, argName:'name', type:String.class
+  n longOpt: 'nifiapi', 'NiFi REST API (override), e.g. http://example.com:9090',
+	args:1, argName:'http://host:port', type:String.class
 	
-	def static baseurl="http://10.41.220.72:8080/";
+  
+}
 
-	static main(args) {
-		
-		
-		loadPropertiesMap(processorGroupMap);
-		mainFunction();
-	}
+def opts = cli.parse(args)
+println(opts.getProperties().entrySet().getAt(0))
+
+opts.arguments().each {
+	lt -> println(lt)
+}
+
+def propertiesFile;
+
+
+if (opts.file) {
+  propertiesFile = opts.file
+
+} else {
+  println "ERROR: Missing a file argument\n"
+  cli.usage()
+  System.exit(-1)
+}
 
 
 
-	
-	
-	static void mainFunction(){
-		
-		
-		
+
+def  templateUri=opts.template;
+def nifiuri = opts.nifiapi
+def  y = [:];
+def  t = new XmlSlurper().parse(templateUri)
+def  processorGroupMap = [:];
+
+loadPropertiesMap(propertiesFile,processorGroupMap)
+//Create a Data Structure
+
 		y.nifi = [:]
 
-		y.nifi.url= "http://localhost:8080/";
+		y.nifi.url= nifiuri;
 
 		y.nifi.clientId='REPLACEME';
 
@@ -50,7 +70,7 @@ class TemplateInspectorGV {
 		y.undeploy.controllerServices=[t.snippet.controllerServices.size()];
 
 		y.undeploy.templates=[t.name.text()]
-
+		
 		def controlSerCount=0;
 		def cSerName =y.undeploy.controllerServices;
 
@@ -87,19 +107,18 @@ class TemplateInspectorGV {
 
 			}
 		}
-
 		def PGList = y.undeploy.processGroups;
 		
 		
 		
-		loadprocessorGroups(PGList)
+		loadprocessorGroups(PGList,nifiuri)
 
 		y.processGroups = [:]
 
 
 		if (t.snippet.processors.size() > 0) {
 
-			parseGroup(t.snippet)
+			parseGroup(processorGroupMap,t.snippet,y)
 
 		}
 
@@ -110,7 +129,7 @@ class TemplateInspectorGV {
 		t.snippet.processGroups.each {
 
 			
-			parseGroup(it)
+			parseGroup(processorGroupMap,it,y)
 		}
 
 
@@ -118,33 +137,29 @@ class TemplateInspectorGV {
 		yamlOpts.defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
 		yamlOpts.prettyFlow = true
 
-
+		println("--------------------------Yaml File--------------------------")
 		println new Yaml(yamlOpts).dump(y)
-	}
+		println("--------------------------Yaml File END--------------------------")
 
 
-	def static parseGroup(node) {
+	def static parseGroup(processorGroupMap,node,y) {
 
 		def pgName = node?.name.text()
 
 		if (!pgName) {
 			pgName = 'root'
 		}
-
-
-
-		parseProcessors(pgName, node)
+		parseProcessors(processorGroupMap,pgName, node,y)
 	}
 
 
 
-	def static loadprocessorGroups(PGList){
-		
+	def static loadprocessorGroups(PGList,nifiuri){		
 		
 				def count = 0;
 				
 				
-		def data =new JsonSlurper().parseText( new URL(baseurl+"nifi-api/process-groups/root/process-groups").getText());
+		def data =new JsonSlurper().parseText( new URL(nifiuri+"nifi-api/process-groups/root/process-groups").getText());
 		println(data.processGroups.size())
 		
 		data.processGroups.any  {
@@ -159,7 +174,7 @@ class TemplateInspectorGV {
 		}
 	}
 	
-	def static parseProcessors(groupName, node) {
+	def static parseProcessors(processorGroupMap,groupName, node,y) {
 
 
 		def processors = node.contents.isEmpty() ? node.processors          // root process group
@@ -232,9 +247,9 @@ class TemplateInspectorGV {
 		}
 	}
 
-	def static loadPropertiesMap(processorGroupMap){
+	def static loadPropertiesMap(propertiesFile,processorGroupMap){
 
-		new File("D:\\property_file.txt").each { line ->
+		new File(propertiesFile).each { line ->
 			def record = line.toString()
 
 			def pGroup = record.substring(record.indexOf("processgroups."),record.indexOf(".processors.")).replaceAll("processgroups.", "")
@@ -283,22 +298,7 @@ class TemplateInspectorGV {
 			}
 			
 			}
-			
-			
-			
-			/*if(processorMap.containsKey(processor)){
-				processorMap[processor].putAt(propertyName, propertyValue)
-			}else{
-				def propertyValMap= [:];
-				propertyValMap.put(propertyName, propertyValue);
-				processorMap.put(processor, propertyValMap)
-			}
-			if(processorGroupMap.containsKey(pGroup)){
-				processorGroupMap[pGroup].putAt(pGroup, processorMap)
-			}else{
-				processorGroupMap.put(pGroup, processorMap)
-			}
-		}*/
+		
 		
 	
 		}
@@ -306,4 +306,6 @@ class TemplateInspectorGV {
 		println("-----------Property Map Loaded--------------")
 		println(processorGroupMap.dump()
 			)}
-}
+
+
+
