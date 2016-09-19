@@ -2,6 +2,11 @@
 class Sample {
 
 	static void main(String[] args) {
+		
+		
+	def str="'sads'"	
+		println(str)
+	
 	def paulMap = [
     'name' : 'Paul',
     'age' : 35,
