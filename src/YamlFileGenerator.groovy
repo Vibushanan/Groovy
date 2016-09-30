@@ -41,6 +41,10 @@ cli.with {
 	cn longOpt: 'clusteropts',
 	'cluster opts expects NODE or NCM Default is NODE',
 	args:1, argName:'name', type:String.class
+	u longOpt: 'username', 'username to authenticate with NiFi server',
+	args:1, argName:'user', type:String.class
+	p longOpt: 'password', 'password to authenticate with NiFi server',
+	args:1, argName:'pass', type:String.class
 
 	
 }
@@ -101,14 +105,43 @@ if (opts.fileout) {
 
 /*Nifi api url
  * 
- * This works only on unsecures Nifi 
 ------------------------------------------*/
 
 def nifiuri;
 if(opts.nifiapi){
-nifiuri=opts.nifiapi
+	nifiuri=opts.nifiapi
 
-nifiapiurl = new RESTClient(opts.nifiapi)
+	//Check for Secured/Unsecured nifi
+	if (nifiuri.startsWith("https")){
+		//Secured Connection
+		nifiapiurl = new RESTClient(opts.nifiapi)
+		def user  = opts.username
+		def pass  = opts.password
+
+		assert user : 'Authorization user must be provided for Secured Nifi'
+		assert pass : 'Authorization password must be provided for Secured Nifi'
+		def authbody = [username : "$user", password : "$pass"]
+		println authbody
+
+		resp = nifiapiurl.post (
+				path: "access/token",
+				body: authbody,
+				requestContentType: URLENC
+				)
+
+		assert resp.status == 201
+
+
+		//get response bearer token and set our header
+		nifiapiurl.defaultRequestHeaders.'Authorization' = "Bearer " + resp.data.text
+
+
+	}else{
+		//unsecured Connection
+		nifiapiurl = new RESTClient(opts.nifiapi)
+
+	}
+
 }else{
 nifiuri="http://localhost:8080/nifi-api"
 

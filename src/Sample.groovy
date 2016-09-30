@@ -6,6 +6,17 @@ class Sample {
 
 	static void main(String[] args) {
 		
+		
+		def url = "http://localhost:8080/nifi-api";
+		
+		if(url.startsWith("http")){
+			println "UnSecure"
+		}else{
+		
+		println "Secure"
+		}
+		/*
+		
 		def y=[:]
 		
 		y.nifi=[:]
@@ -29,5 +40,5 @@ class Sample {
 	  yamlOpts.defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
 	  println new Yaml(yamlOpts).dump(y)
 		
-	}
+	*/}
 }
