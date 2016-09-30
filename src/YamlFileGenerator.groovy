@@ -10,7 +10,6 @@ header: 'Options:')
 
 
 /*
- * 
  @Grab(group='org.codehaus.groovy.modules.http-builder',
  module='http-builder',
  version='0.7.1')
@@ -22,32 +21,47 @@ header: 'Options:')
  version='4.2.1')
  */
 
-//...............Run Time Parameters.............
+
+/*Run Time Parameters 
+ *-------------------    
+ */
 cli.with {
-	t longOpt: 'template', 'Template URI (override)',
+	t longOpt: 'template', 
+	'Template URI (override) Complete xml template file path  eg, C:/NifiTemplates/Template.xml',
 	args:1, argName:'uri', type:String.class
 	f longOpt: 'file',
 	'Properties File',
 	args:1, argName:'name', type:String.class
-	n longOpt: 'nifiapi', 'NiFi REST API (override), e.g. http://example.com:9090/nifi-api',
+	n longOpt: 'nifiapi', 
+	'NiFi REST API (override), e.g. http://example.com:9090/nifi-api defaults to http://localhost:8080/nifiapi This works only on unsecured nifi',
 	args:1, argName:'http://host:port', type:String.class
 	f1 longOpt: 'fileout',
-	'Properties File',
+	'yml Output file, eg. MyOutputFile.yml ',
 	args:1, argName:'name', type:String.class
 	cn longOpt: 'clusteropts',
-	'cluster opts',
+	'cluster opts expects NODE or NCM Default is NODE',
 	args:1, argName:'name', type:String.class
+
 	
 }
 
+/*
+ *Variables to hold run time parameters
+ *-------------------------------------
+ */
+                           
+
 def opts = cli.parse(args)
-
 def propertiesFile;
-
 def outputFile;
+def node ;
+def nifiapiurl ;
+def  templateUri;
 
 
-//..................input Check........................
+/*Error Handling for run time parameters
+--------------------------------------*/
+
 if (opts.file) {
 	propertiesFile = opts.file
 } else {
@@ -55,6 +69,26 @@ if (opts.file) {
 	cli.usage()
 	System.exit(-1)
 }
+
+/*Template file chk
+-----------------*/
+
+if (opts.template) {
+  templateUri= opts.template
+File f = new File(templateUri)
+  def scheme = f.toURI().scheme
+  if (!scheme) {
+	  // assume a local file
+	  templateUri= 'file:' + templateUri
+  }
+} else {
+  println "ERROR: Missing a file argument\n"
+  cli.usage()
+  System.exit(-1)
+}
+
+/*Out File Check
+--------------*/
 
 if (opts.fileout) {
 	outputFile = opts.fileout
@@ -65,21 +99,56 @@ if (opts.fileout) {
 }
 
 
+/*Nifi api url
+ * 
+ * This works only on unsecures Nifi 
+------------------------------------------*/
 
+def nifiuri;
+if(opts.nifiapi){
+nifiuri=opts.nifiapi
 
-def nifiapiurl = new RESTClient(opts.nifiapi)
-def  templateUri=opts.template;
-def nifiuri = opts.nifiapi
+nifiapiurl = new RESTClient(opts.nifiapi)
+}else{
+nifiuri="http://localhost:8080/nifi-api"
+
+nifiapiurl = new RESTClient("http://localhost:8080/nifi-api")
+}
+
+/*Cluster Options
+---------------*/
+
+if(opts.clusteropts.equalsIgnoreCase("NODE")||opts.clusteropts.equalsIgnoreCase("NCM")){
+
+node=opts.clusteropts.toUpperCase()
+}else{
+
+node="NODE"
+}
+
+/*Define the root variable
+------------------------*/
+
 def  y = [:];
 def  t = new XmlSlurper().parse(templateUri)
 def  processorGroupMap = [:];
 def controllerServicesMap=[:];
-def node = opts.clusteropts.toUpperCase()
+
+
+/*Load Properties file in a Map 
+ *-----------------------------
+ * Load the process group related properties in processorGroupMap
+ * Load control services related properties in controllerServicesMap
+ */
 
 
 loadPropertiesMap(propertiesFile,processorGroupMap,controllerServicesMap)
 
-//Create a Data Structure
+
+
+
+/*Create a Data Structure to hold yaml file
+-----------------------------------------*/
 
 y.nifi = [:]
 
@@ -91,71 +160,91 @@ y.nifi.templateUri = templateUri
 
 y.nifi.templateName = t.name.text()
 
-y.nifi.gracefullShutDown='True';
-
+y.nifi.gracefullShutDown=Boolean.TRUE;
 
 y.nifi.undeploy=[:];
 
-y.nifi.undeploy.processGroups=[t.snippet.processGroups.size()];
+y.nifi.undeploy.processGroups=[] as ArrayList;
 
-y.nifi.undeploy.controllerServices=[t.snippet.controllerServices.size()];
+y.nifi.undeploy.controllerServices=[] as ArrayList;
 
 y.nifi.undeploy.templates=[t.name.text()]
 
-def controlSerCount=0;
 
+
+
+/*Define Undeploy
+---------------
+*/
 def cSerName =y.nifi.undeploy.controllerServices;
+def PGList = y.nifi.undeploy.processGroups;
 
-loadControlServices(cSerName,nifiapiurl,node)
+
+/*To Hold Undeploy structure
+--------------------------*/
+
+def xmlprocessgrouplist =[] as Set
+def xmlcontrolSerlist = [] as Set
+def nifiControlServices = [] as Set
+def nifiprocessgrouplist  = [] as Set
+
+
+/*Load all control services from  the NIFI rest url into a list
+-------------------------------------------------------------
+*/
+loadControlServices(nifiControlServices,nifiapiurl,node)
+
+
+/*
+Data structure to hold process groups and control services
+----------------------------------------------------------
+*/
+y.processGroups = [:]
 y.controllerServices = [:]
-
 def yC = y.controllerServices
+
+
+/*
+ *   if the template xml file contains Control services ----> controllerServices.size()
+ *   Add control services name and State to             ----> y.controllerServices
+ *   if there are properties inside control services    ---->def xProps = xCs.properties?.entry
+ *   For each control services check if the config name is found in the  control services MAP 
+ * 	 Add the Control Service config name (From xml )  
+ *   and Control service config value (from Properties file) to yml structure  
+ */
+
 
 if (t.snippet.controllerServices.size() > 0) {
 
-	println("controllerServicesMap : "+controllerServicesMap)
 
 	t.snippet.controllerServices.each { xCs ->
 
-		println("xCs  :"+xCs.name.text())
-
 		yC[xCs.name.text()] = [:]
 		yC[xCs.name.text()].state = 'ENABLED'
-		
+		xmlcontrolSerlist.add(xCs.name.text())
 		def xProps = xCs.properties?.entry
 
 		if (xProps.size() > 0) {
-			
-			println("xProps  :  "+xProps)
+
+
 			yC[xCs.name.text()].config = [:]
-			
+
 			xProps.each { xProp ->
 
-				println(xCs.name.text())
 
-				
 				if(controllerServicesMap.containsKey(xCs.name.text().toLowerCase().trim())){
-
-
-					println("Control Service Key is there ")
 
 
 					if(controllerServicesMap[xCs.name.text().toLowerCase().trim()].containsKey(xProp.key.text().toLowerCase().trim())){
 
-						println("Config Present")
-						yC[xCs.name.text()].config[xProp.key.text()] = xProp.value.text()
 
-					
-						
+						yC[xCs.name.text()].config[xProp.key.text()] = controllerServicesMap[xCs.name.text().toLowerCase().trim()].getAt(xProp.key.text().toLowerCase().trim())
+
+
+
 					}
 
 				}
-
-
-
-
-
-				println("xProp.key.text() : "+xProp.key.text()+"  xProp.value.text() : "+xProp.value.text())
 
 
 			}
@@ -166,16 +255,17 @@ if (t.snippet.controllerServices.size() > 0) {
 	}
 }
 
-println("Y--->   "+y.controllerServices)
-def PGList = y.nifi.undeploy.processGroups;
+
+/*loads all process groups using NIFI rest api
+---------------------------------------------
+*/
+loadprocessorGroups(nifiprocessgrouplist,nifiapiurl)
 
 
-
-loadprocessorGroups(PGList,nifiapiurl)
-
-
-y.processGroups = [:]
-
+/*
+if there are any process groups decide on group name
+----------------------------------------------------
+*/
 
 if (t.snippet.processors.size() > 0) {
 
@@ -183,252 +273,309 @@ if (t.snippet.processors.size() > 0) {
 
 }
 
-
-
-
-
+/*
+for each process group call parse group
+---------------------------------------
+*/
 t.snippet.processGroups.each {
-
-
 	parseGroup(processorGroupMap,it,y)
+	
+	getXMLTemplateprocessGroup(xmlprocessgrouplist,it)
 }
+
+
+xmlcontrolSerlist.addAll(nifiControlServices)
+
+xmlprocessgrouplist.addAll(nifiprocessgrouplist)
+
+cSerName.addAll(xmlcontrolSerlist)
+PGList.addAll(xmlprocessgrouplist)
+
+
+
+
+/*Formatting
+----------
+*/
 
 def yamlOpts = new DumperOptions()
 yamlOpts.defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
-
-
-//println prettyPrint.print(y)
-
-File file = new File("D://willaian.yml")
-
+File file = new File(outputFile)
 new Yaml(yamlOpts).dump(y,  new FileWriter(outputFile))
+println("Successfully wrote YML file")
+//........................End.......................................
 
-println("Sucessfully Done...")
+
+/*
+if no group name found return "root"
+------------------------------------
+*/
 
 def static parseGroup(processorGroupMap,node,y) {
 
 	def pgName = node?.name.text()
+	
 
 	if (!pgName) {
 		pgName = 'root'
 	}
-	parseProcessors(processorGroupMap,pgName, node,y)
+		
+	parseProcessors(processorGroupMap,pgName, null, node,y)
 }
 
 
-def static loadControlServices(cSerName,nifiapiurl,node){
+/*Get process group from xml template
+------------------------------------
+*/
+
+def static getXMLTemplateprocessGroup(xmlprocessgrouplist,node){
 	
+	xmlprocessgrouplist.add(node.name.text())
+	
+}
+
+
+/*Get Control Services from xml template
+--------------------------------------
+*/
+def static getXMLTemplateControlService(xmlcontrolSerlist,node){
+
+}
+
+
+/*Get all process groups recursively
+----------------------------------
+*/
+def static parseGrouprecursive(processorGroupMap,node,y,rootgroupName) {
+	
+		def pgName = node?.name.text()
+		if (!pgName) {
+			pgName = 'root'
+		}
+		parseProcessors(processorGroupMap,pgName, rootgroupName, node,y)
+	}
+
+
+/*Loads all control services in a list by REST API
+------------------------------------------------
+*/
+def static loadControlServices(nifiControlServices,nifiapiurl,node){
+
 	def resp = nifiapiurl.get(path: "controller/controller-services/"+node);
 	assert resp.status == 200
-	def count = 0;
+
 	resp.data.controllerServices.each { pGs ->
-		cSerName[count]=pGs.name;
-		count++
+
+		nifiControlServices.add(pGs.name)
+
 	}
 }
 
-def static loadprocessorGroups(PGList,nifiapiurl){
+
+/*Loads all process groups in a list by REST API
+----------------------------------------------
+*/
+
+def static loadprocessorGroups(nifiprocessgrouplist,nifiapiurl){
 
 	def resp = nifiapiurl.get(path: "controller/process-groups/root/process-group-references");
 	assert resp.status == 200
 
-	def count = 0;
 	resp.data.processGroups.each { pGs ->
-		PGList[count]=pGs.name;
-		count++
+		nifiprocessgrouplist.add(pGs.name)
 	}
 
 }
 
-def static parseProcessors(processorGroupMap,groupName, node,y) {
 
+/*  For each process groups
+ * 				Check the yml file and create the appropriate data structure to hold
+ * 				process group -> process ->  Config Name : Config Value
+ * 				if the process group- process - config name is found in the properties file
+ * 							pull the value from properties file
+ * `			else
+ * 							add REPLACE ME
+ */
+def static parseProcessors(processorGroupMap,groupName, rootgroupName, node,y) {
 
+	if(rootgroupName==null||rootgroupName.equals(null)){
+		
+		rootgroupName = groupName
+		
+	}
+	
 	def processors = node.contents.isEmpty() ? node.processors          // root process group
-			: node.contents.processors // regular process group
+			: node.contents.processors 									// regular process group
 
 
 	processors.each { p ->
+
 		def ProcessName= p.name.text()
+
+		
 		p.config.properties?.entry?.each {
+			
+			if(processorGroupMap.containsKey(rootgroupName.toString().toLowerCase().trim())){
 
-			//println("Process Group :"+groupName+"  |  Process :"+p.name.text()+"  | Propert :"+it.key.text());
-			if(processorGroupMap.containsKey(groupName.toString().toLowerCase().trim())){
-
-				def processorsMap = processorGroupMap[groupName.toString().toLowerCase().trim()]
-
-
+				def processorsMap = processorGroupMap[rootgroupName.toString().toLowerCase().trim()]
 
 				if(processorsMap.containsKey(p.name.text().toLowerCase().trim())){
 
 					def propertiesMap = processorsMap[p.name.text().toLowerCase().trim()]
 
-
-
-
 					if(propertiesMap.containsKey(it.key.text().toLowerCase().trim())){
+						
 
-						if(!y.processGroups.containsKey(groupName)){
-							//println("Group Not Present   :"+y.processGroups)
-							y.processGroups[groupName] = [:]
-							y.processGroups[groupName].processors = [:]
-							y.processGroups[groupName].processors [p.name.text()] = [:]
-							y.processGroups[groupName].processors [p.name.text()].config = [:]
+						if(!y.processGroups.containsKey(rootgroupName)){
+							y.processGroups[rootgroupName] = [:]
+							y.processGroups[rootgroupName].processors = [:]
+							y.processGroups[rootgroupName].processors [p.name.text()] = [:]
+							y.processGroups[rootgroupName].processors [p.name.text()].config = [:]
 						}else{
 
-
-							if(y.processGroups[groupName].processors.containsKey(ProcessName)){
-
+							if(y.processGroups[rootgroupName].processors.containsKey(ProcessName)){
 
 							}else{
-								y.processGroups[groupName].processors [p.name.text()] = [:]
-								y.processGroups[groupName].processors [p.name.text()].config = [:]
+								y.processGroups[rootgroupName].processors [p.name.text()] = [:]
+								y.processGroups[rootgroupName].processors [p.name.text()].config = [:]
 
 							}
-
 						}
 
+						if (it.value.size() > 0) {
 
-						if (it.value.text() ==~ /[a-zA-Z0-9]{8}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{12}/) {
-							def n = t.snippet.controllerServices.find { cs -> cs.id.text() == it.value.text() }
-
-
-							assert !n.isEmpty() : "Couldn't resolve a Controller Service with ID: ${it.value.text()}"
-
-							y.processGroups[groupName].processors[p.name.text()].config[it.key.text()] = '\${' + n.name.text() + "}"
-						}
-						else  if (it.value.size() > 0) {
+							y.processGroups[rootgroupName].processors[p.name.text()].config[it.key.text()] = it.value.size() == 0 ? "REPLACEME" : propertiesMap.get(it.key.text().toLowerCase().trim());
 
 
-
-							y.processGroups[groupName].processors[p.name.text()].config[it.key.text()] = it.value.size() == 0 ? "No Value Found" : it.value.text()
+							//y.processGroups[groupName].processors[p.name.text()].config[it.key.text()] = it.value.size() == 0 ? "No Value Found" : it.value.text()
 
 						}else{
-						def repl='REPLACEME'
-							y.processGroups[groupName].processors[p.name.text()].config[it.key.text()]=String.valueOf('REPLACEME')
+							def repl='REPLACEME'
+							y.processGroups[rootgroupName].processors[p.name.text()].config[it.key.text()]=String.valueOf('REPLACEME')
 
 						}
 
 					}else{
-						/*println("Not in Property  ")
-						 println("Failed  Group :"+groupName.toString().toLowerCase().trim()+" Processor  :"+p.name.text()
-						 +"   Property   :"+it.key.text());*/
-
-
+						
 					}
 
 				}else{
 
-					/*println("Not in processors  ")
-					 println("Failed  Group :"+groupName.toString().toLowerCase().trim()+" Processor  :"+p.name.text()
-					 +"   Property   :"+it.key.text());*/
+					
 				}
 
 
 			}else{
-				/*println("Not in Group  ")
-				 println("Failed  Group :"+groupName.toString().toLowerCase().trim()+" Processor  :"+p.name.text()
-				 +"   Property   :"+it.key.text());*/
+				
 			}
-
-
-			// check if it's a UUID and try lookup the CS to get the name
-			//println(c)
-
-
 
 		}
 	}
+
+		// Check For Process groups recursively
+	 
+		def subProcessGroups = node.contents.isEmpty() ?  node.processGroups : node.contents.processGroups
+
+	
+
+	if(! node.contents.processGroups.isEmpty()){
+
+
+		node.contents.processGroups.each {
+			
+		it.contents.processors.each {
+			   lt ->
+			
+			parseGrouprecursive(processorGroupMap,it,y,rootgroupName)
+		
+			}
+			
+		}
+		
+	}
+
 }
+
+
+/*
+ * For each properties file line
+ * 		if it has processgroups, processors and config
+ * 				 Extract the data and populate in processgroup map			
+ * 		if it has controllerServices and config
+ * 				 Extract the data and populate in controllerServicesMap map	
+ */
 
 def static loadPropertiesMap(propertiesFile,processorGroupMap,controllerServicesMap){
 
 	new File(propertiesFile).each { line ->
 		def record = line.toString()
-//println(record)
 
-if(record.contains("processgroups")&&record.contains("processors")&&record.contains("config")){
-	
-		def pGroup = record.substring(record.indexOf("processgroups."),record.indexOf(".processors.")).replaceAll("processgroups.", "")
-		def processor =  record.substring(record.indexOf(".processors."),record.indexOf(".config.")).replaceAll(".processors.", "")
-		def property = record.substring(record.indexOf(".config.")).replaceAll(".config.", "")
-		def propertyName=	property.substring(0, property.toString().indexOf("="));
-		def propertyValue = property.substring(property.toString().indexOf("=")).replaceAll("=", "")
+		if(record.contains("processgroups")&&record.contains("processors")&&record.contains("config")){
 
-
-		if(processorGroupMap.containsKey(pGroup)){
+			def pGroup = record.substring(record.indexOf("processgroups."),record.indexOf(".processors.")).replaceAll("processgroups.", "")
+			def processor =  record.substring(record.indexOf(".processors."),record.indexOf(".config.")).replaceAll(".processors.", "")
+			def property = record.substring(record.indexOf(".config.")).replaceAll(".config.", "")
+			def propertyName=	property.substring(0, property.toString().indexOf("="));
+			def propertyValue = property.substring(property.toString().indexOf("=")).replaceAll("=", "")
 
 
-			if(processorGroupMap[pGroup].containsKey(processor)){
+			if(processorGroupMap.containsKey(pGroup)){
 
-				processorGroupMap[pGroup][processor].putAt(propertyName, propertyValue)
+
+				if(processorGroupMap[pGroup].containsKey(processor)){
+
+					processorGroupMap[pGroup][processor].putAt(propertyName, propertyValue)
+
+
+				}else{
+					//if Processor is not Found
+					def propertyValMap= [:];
+					propertyValMap.put(propertyName, propertyValue);
+					processorGroupMap[pGroup].putAt(processor,propertyValMap)
+
+				}}
+			else{
+				//If the entire Group is not there
+
+				def propertyValMap= [:];
+				def processorMap=[:];
+				propertyValMap.put(propertyName, propertyValue);
+				processorMap.put(processor, propertyValMap)
+				processorGroupMap.put(pGroup, processorMap)
+
+
+			}
+
+
+
+		}else if(record.contains("controllerServices")&&record.contains("config")){
+
+			
+			def cServices=record.substring(record.indexOf("controllerServices."),record.indexOf(".config.")).replaceAll("controllerServices.", "")
+			def config = record.substring(record.indexOf(".config.")).replaceAll(".config.", "")
+			def configName=	config.substring(0, config.toString().indexOf("="));
+			def configValue = config.substring(config.toString().indexOf("=")).replaceAll("=", "")
+
+			def configValMap= [:];
+			configValMap.putAt(configName,configValue)
+			if(controllerServicesMap.containsKey(cServices)){
+
+
+
+				controllerServicesMap[cServices].putAt(configName, configValue)
 
 
 			}else{
-				//if Processor is not Found
-				def propertyValMap= [:];
-				propertyValMap.put(propertyName, propertyValue);
-				processorGroupMap[pGroup].putAt(processor,propertyValMap)
 
-			}}
-		else{
-			//If the entire Group is not there
+				controllerServicesMap.put(cServices,configValMap)
 
-			def propertyValMap= [:];
-			def processorMap=[:];
-			propertyValMap.put(propertyName, propertyValue);
-			processorMap.put(processor, propertyValMap)
-			processorGroupMap.put(pGroup, processorMap)
+			}
 
-
+		}else{
+			
 		}
 
 
-
-	}else if(record.contains("controllerServices")&&record.contains("config")){
-	
-	//println("Load in Control Services "+record)
-	
-	def cServices=record.substring(record.indexOf("controllerServices."),record.indexOf(".config.")).replaceAll("controllerServices.", "")
-	def config = record.substring(record.indexOf(".config.")).replaceAll(".config.", "")
-	def configName=	config.substring(0, config.toString().indexOf("="));
-	def configValue = config.substring(config.toString().indexOf("=")).replaceAll("=", "")
-
-	//println("Control Service : "+cServices+"  ConfigName  :  "+configName+"  ConfigValue  :  "+configValue)
-	
-	def configValMap= [:];
-	configValMap.putAt(configName,configValue)
-	if(controllerServicesMap.containsKey(cServices)){
-	
-		
-		
-		controllerServicesMap[cServices].putAt(configName, configValue)
-		
-		
-	}else{
-	
-	controllerServicesMap.put(cServices,configValMap)
-		
 	}
-	
-	//println(controllerServicesMap)
-	
-	}else{
-	println("Lines Skippeed"+line)
-	}
-	/*	println("MAP")
-	 for(e in processorGroupMap){
-	 def l = e.value;
-	 //print "group = ${e.key}"
-	 for(y in l){
-	 //println("group = ${e.key} process =  ${y.key}, value = ${y.value}")
-	 def rec = y.value
-	 for(aRec in rec){
-	 println("group = ${e.key} process =  ${y.key}, config = ${aRec.key}, value =${aRec.value}")
-	 }
-	 }
-	 }*/
 
 }
-
-}
-

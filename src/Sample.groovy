@@ -1,31 +1,33 @@
+import org.yaml.snakeyaml.DumperOptions
+import org.yaml.snakeyaml.Yaml
+
 
 class Sample {
 
 	static void main(String[] args) {
 		
+		def y=[:]
 		
-	def str="'sads'"	
-		println(str)
-	
-	def paulMap = [
-    'name' : 'Paul',
-    'age' : 35,
-    'address' : '123 Main St',
-    'list' : [1,2,3]
-  ];
- 
-  // Access with key
-  println("Name " + paulMap['name']);
-  println("Age " + paulMap.get('age'));
-  println("List Item " + paulMap['list'][1]);
- 
-  // Add key value
-  paulMap.put('city', 'Pittsburgh');
- 
-  // Check for key
-  println("Has City " + paulMap.containsKey('city'));
- 
-  // Size
-  println("Size " + paulMap.size());
+		y.nifi=[:]
+		
+		def List<String> st =["hello","hi"]
+		
+		def li=[];
+		li[0]="ddsd"
+		
+		li[1]=st
+		
+		
+	  y.nifi.undeploy=[:]
+	  
+	   y.nifi.undeploy.process=[:]
+	   
+	  y.nifi.undeploy.process.putAt("Prr",li) 	  
+	  
+	  
+	  def yamlOpts = new DumperOptions()
+	  yamlOpts.defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
+	  println new Yaml(yamlOpts).dump(y)
+		
 	}
 }
