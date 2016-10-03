@@ -114,11 +114,11 @@ if(opts.nifiapi){
 
 	//Check for Secured/Unsecured nifi
 	if (nifiuri.startsWith("https")){
-		
+
 		//Secured Connection
 		nifiapiurl = new RESTClient(opts.nifiapi)
-		
-		//Secured connection requires username and password to connect 
+
+		//Secured connection requires username and password to connect
 		def user  = opts.username
 		def pass  = opts.password
 		nifiapiurl.ignoreSSLIssues()
@@ -142,8 +142,6 @@ if(opts.nifiapi){
 
 	}else{
 		//unsecured Connection
-	
-		println "UnSecure Nifi"
 		nifiapiurl = new RESTClient(opts.nifiapi)
 
 	}
