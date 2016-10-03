@@ -3,6 +3,7 @@ import groovyx.net.http.RESTClient
 import java.nio.file.Path
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.DumperOptions
+import static groovyx.net.http.ContentType.URLENC
 
 
 def cli = new CliBuilder(usage: 'groovy NiFiDeploy.groovy [options]',
@@ -113,16 +114,18 @@ if(opts.nifiapi){
 
 	//Check for Secured/Unsecured nifi
 	if (nifiuri.startsWith("https")){
+		
 		//Secured Connection
-		println "Secure Nifi Connection"
 		nifiapiurl = new RESTClient(opts.nifiapi)
+		
+		//Secured connection requires username and password to connect 
 		def user  = opts.username
 		def pass  = opts.password
-
+		nifiapiurl.ignoreSSLIssues()
 		assert user : 'Authorization user must be provided for Secured Nifi'
 		assert pass : 'Authorization password must be provided for Secured Nifi'
 		def authbody = [username : "$user", password : "$pass"]
-		println authbody
+
 
 		resp = nifiapiurl.post (
 				path: "access/token",
@@ -146,10 +149,11 @@ if(opts.nifiapi){
 	}
 
 }else{
-println "Default UnSecure Nifi"
-nifiuri="http://localhost:8080/nifi-api"
 
-nifiapiurl = new RESTClient("http://localhost:8080/nifi-api")
+		//if url is not specified defaulted to localhost 
+
+		nifiuri="http://localhost:8080/nifi-api"
+		nifiapiurl = new RESTClient("http://localhost:8080/nifi-api")
 }
 
 /*Cluster Options
