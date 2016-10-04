@@ -6,20 +6,23 @@ import org.yaml.snakeyaml.DumperOptions
 import static groovyx.net.http.ContentType.URLENC
 
 
-def cli = new CliBuilder(usage: 'groovy NiFiDeploy.groovy [options]',
+def cli = new CliBuilder(usage: 'groovy xxxxxx.groovy [options]',
 header: 'Options:')
 
 
 /*
- @Grab(group='org.codehaus.groovy.modules.http-builder',
- module='http-builder',
- version='0.7.1')
- @Grab(group='org.yaml',
- module='snakeyaml',
- version='1.17')
- @Grab(group='org.apache.httpcomponents',
- module='httpmime',
- version='4.2.1')
+ @Grab(group='org.codehaus.groovy.modules.http-builder', module='http-builder', version='0.7.1')
+ @Grab(group='org.yaml', module='snakeyaml', version='1.17')
+ @Grab(group='org.apache.httpcomponents', module='httpmime', version='4.2.1')
+ @Grab(group='commons-cli', module='commons-cli', version='1.3.1')
+ @Grab(group='org.apache.httpcomponents', module='httpcore', version='4.4.5')
+ @Grab(group='org.apache.httpcomponents', module='httpclient', version='4.5.2')
+ @Grab(group='commons-logging', module='commons-logging', version='1.2')
+ @Grab(group='net.sf.json-lib', module='json-lib', version='2.4')
+ @Grab(group='xml-resolver', module='xml-resolver', version='1.2')
+ @Grab(group='commons-collections', module='commons-collections', version='3.1')
+ @Grab(group='nekohtml', module='nekohtml', version='1.9.14')
+ @Grab(group='xerces', module='xercesImpl', version='2.6.2')
  */
 
 
