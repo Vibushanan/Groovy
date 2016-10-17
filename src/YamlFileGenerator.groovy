@@ -6,25 +6,22 @@ import org.yaml.snakeyaml.DumperOptions
 import static groovyx.net.http.ContentType.URLENC
 
 
-def cli = new CliBuilder(usage: 'groovy xxxxxx.groovy [options]',
-header: 'Options:')
-
-
-/*
- @Grab(group='org.codehaus.groovy.modules.http-builder', module='http-builder', version='0.7.1')
+ /*@Grab(group='org.codehaus.groovy.modules.http-builder', module='http-builder', version='0.7.1')
  @Grab(group='org.yaml', module='snakeyaml', version='1.17')
  @Grab(group='org.apache.httpcomponents', module='httpmime', version='4.2.1')
- @Grab(group='commons-cli', module='commons-cli', version='1.3.1')
+ //@Grab(group='commons-cli', module='commons-cli', version='1.3.1')
  @Grab(group='org.apache.httpcomponents', module='httpcore', version='4.4.5')
  @Grab(group='org.apache.httpcomponents', module='httpclient', version='4.5.2')
  @Grab(group='commons-logging', module='commons-logging', version='1.2')
- @Grab(group='net.sf.json-lib', module='json-lib', version='2.4')
+ @Grab(group='net.sf.json-lib', module='json-lib', version='2.4', classifier='jdk15')
  @Grab(group='xml-resolver', module='xml-resolver', version='1.2')
- @Grab(group='commons-collections', module='commons-collections', version='3.1')
- @Grab(group='nekohtml', module='nekohtml', version='1.9.14')
- @Grab(group='xerces', module='xercesImpl', version='2.6.2')
- */
+ @Grab(group='org.apache.commons', module='commons-collections4', version='4.1')
+ @Grab(group='net.sourceforge.nekohtml', module='nekohtml', version='1.9.22')
+ @Grab(group='xerces', module='xercesImpl', version='2.6.2')*/
 
+ 
+def cli = new CliBuilder(usage: 'groovy CreateYmlFile.groovy [options]',
+header: 'Options:')
 
 /*Run Time Parameters 
  *-------------------    
@@ -43,7 +40,7 @@ cli.with {
 	'yml Output file, eg. MyOutputFile.yml ',
 	args:1, argName:'name', type:String.class
 	cn longOpt: 'clusteropts',
-	'cluster opts expects NODE or NCM Default is NODE',
+	'cluster opts expects NODE or NCM or BOTH Default is NODE',
 	args:1, argName:'name', type:String.class
 	u longOpt: 'username', 'username to authenticate with NiFi server',
 	args:1, argName:'user', type:String.class
@@ -64,12 +61,14 @@ def propertiesFile;
 def outputFile;
 def node ;
 def nifiapiurl ;
-def  templateUri;
+def templateUri;
 
 
 /*Error Handling for run time parameters
 --------------------------------------*/
 
+/*Property File check
+------------------- */
 if (opts.file) {
 	propertiesFile = opts.file
 } else {
@@ -160,7 +159,7 @@ if(opts.nifiapi){
 /*Cluster Options
 ---------------*/
 
-if(opts.clusteropts.equalsIgnoreCase("NODE")||opts.clusteropts.equalsIgnoreCase("NCM")){
+if(opts.clusteropts.equalsIgnoreCase("NODE")||opts.clusteropts.equalsIgnoreCase("NCM")||opts.clusteropts.equalsIgnoreCase("BOTH")){
 
 node=opts.clusteropts.toUpperCase()
 }else{
@@ -234,7 +233,15 @@ def nifiprocessgrouplist  = [] as Set
 /*Load all control services from  the NIFI rest url into a list
 -------------------------------------------------------------
 */
-loadControlServices(nifiControlServices,nifiapiurl,node)
+if(node == "BOTH"||node.equals("BOTH")){
+	loadControlServices(nifiControlServices,nifiapiurl,"NODE")
+	loadControlServices(nifiControlServices,nifiapiurl,"NCM")
+}else{
+
+	loadControlServices(nifiControlServices,nifiapiurl,node)
+}
+
+//loadControlServices(nifiControlServices,nifiapiurl,node)
 
 
 /*
@@ -484,18 +491,18 @@ def static parseProcessors(processorGroupMap,groupName, rootgroupName, node,y) {
 							}
 						}
 
-						if (it.value.size() > 0) {
+						//if (it.value.size() > 0) {
 
-							y.processGroups[rootgroupName].processors[p.name.text()].config[it.key.text()] = it.value.size() == 0 ? "REPLACEME" : propertiesMap.get(it.key.text().toLowerCase().trim());
+							//y.processGroups[rootgroupName].processors[p.name.text()].config[it.key.text()] = it.value.size() == 0 ? "REPLACEME" : propertiesMap.get(it.key.text().toLowerCase().trim());
 
 
 							//y.processGroups[groupName].processors[p.name.text()].config[it.key.text()] = it.value.size() == 0 ? "No Value Found" : it.value.text()
 
-						}else{
-							def repl='REPLACEME'
+						//}else{
+							//def repl='REPLACEME'
 							y.processGroups[rootgroupName].processors[p.name.text()].config[it.key.text()]=String.valueOf('REPLACEME')
 
-						}
+						//}
 
 					}else{
 						
