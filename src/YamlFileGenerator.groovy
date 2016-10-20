@@ -1,3 +1,4 @@
+
 import groovy.json.JsonSlurper
 import groovyx.net.http.RESTClient
 import java.nio.file.Path
@@ -23,24 +24,21 @@ import static groovyx.net.http.ContentType.URLENC
 def cli = new CliBuilder(usage: 'groovy CreateYmlFile.groovy [options]',
 header: 'Options:')
 
-/*Run Time Parameters 
- *-------------------    
+/*Run Time Parameters
+ *-------------------
  */
 cli.with {
-	t longOpt: 'template', 
+	t longOpt: 'template',
 	'Template URI (override) Complete xml template file path  eg, C:/NifiTemplates/Template.xml',
 	args:1, argName:'uri', type:String.class
 	f longOpt: 'file',
 	'Properties File',
 	args:1, argName:'name', type:String.class
-	n longOpt: 'nifiapi', 
+	n longOpt: 'nifiapi',
 	'NiFi REST API (override), e.g. http://example.com:9090/nifi-api defaults to http://localhost:8080/nifiapi This works only on unsecured nifi',
 	args:1, argName:'http://host:port', type:String.class
 	f1 longOpt: 'fileout',
 	'yml Output file, eg. MyOutputFile.yml ',
-	args:1, argName:'name', type:String.class
-	cn longOpt: 'clusteropts',
-	'cluster opts expects NODE or NCM or BOTH Default is NODE',
 	args:1, argName:'name', type:String.class
 	u longOpt: 'username', 'username to authenticate with NiFi server',
 	args:1, argName:'user', type:String.class
@@ -54,7 +52,7 @@ cli.with {
  *Variables to hold run time parameters
  *-------------------------------------
  */
-                           
+						   
 
 def opts = cli.parse(args)
 def propertiesFile;
@@ -107,7 +105,7 @@ if (opts.fileout) {
 
 
 /*Nifi api url
- * 
+ *
 ------------------------------------------*/
 
 def nifiuri;
@@ -150,22 +148,12 @@ if(opts.nifiapi){
 
 }else{
 
-		//if url is not specified defaulted to localhost 
+		//if url is not specified defaulted to localhost
 
 		nifiuri="http://localhost:8080/nifi-api"
 		nifiapiurl = new RESTClient("http://localhost:8080/nifi-api")
 }
 
-/*Cluster Options
----------------*/
-
-if(opts.clusteropts.equalsIgnoreCase("NODE")||opts.clusteropts.equalsIgnoreCase("NCM")||opts.clusteropts.equalsIgnoreCase("BOTH")){
-
-node=opts.clusteropts.toUpperCase()
-}else{
-
-node="NODE"
-}
 
 /*Define the root variable
 ------------------------*/
@@ -176,7 +164,7 @@ def  processorGroupMap = [:];
 def controllerServicesMap=[:];
 
 
-/*Load Properties file in a Map 
+/*Load Properties file in a Map
  *-----------------------------
  * Load the process group related properties in processorGroupMap
  * Load control services related properties in controllerServicesMap
@@ -230,18 +218,12 @@ def nifiControlServices = [] as Set
 def nifiprocessgrouplist  = [] as Set
 
 
-/*Load all control services from  the NIFI rest url into a list
--------------------------------------------------------------
+/*Load all control services from  the NIFI rest url (NODE and NCM) into a list
+---------------------------------------------------------------
 */
-if(node == "BOTH"||node.equals("BOTH")){
-	loadControlServices(nifiControlServices,nifiapiurl,"NODE")
-	loadControlServices(nifiControlServices,nifiapiurl,"NCM")
-}else{
 
-	loadControlServices(nifiControlServices,nifiapiurl,node)
-}
+loadControlServices(nifiControlServices,nifiapiurl)
 
-//loadControlServices(nifiControlServices,nifiapiurl,node)
 
 
 /*
@@ -257,9 +239,9 @@ def yC = y.controllerServices
  *   if the template xml file contains Control services ----> controllerServices.size()
  *   Add control services name and State to             ----> y.controllerServices
  *   if there are properties inside control services    ---->def xProps = xCs.properties?.entry
- *   For each control services check if the config name is found in the  control services MAP 
- * 	 Add the Control Service config name (From xml )  
- *   and Control service config value (from Properties file) to yml structure  
+ *   For each control services check if the config name is found in the  control services MAP
+ * 	 Add the Control Service config name (From xml )
+ *   and Control service config value (from Properties file) to yml structure
  */
 
 
@@ -268,22 +250,25 @@ if (t.snippet.controllerServices.size() > 0) {
 
 	t.snippet.controllerServices.each { xCs ->
 
-		yC[xCs.name.text()] = [:]
-		yC[xCs.name.text()].state = 'ENABLED'
+
 		xmlcontrolSerlist.add(xCs.name.text())
 		def xProps = xCs.properties?.entry
 
 		if (xProps.size() > 0) {
 
 
-			yC[xCs.name.text()].config = [:]
+
 
 			xProps.each { xProp ->
 
 
 				if(controllerServicesMap.containsKey(xCs.name.text().toLowerCase().trim())){
 
-
+					if(!yC.containsKey(xCs.name.text())){
+						yC[xCs.name.text()] = [:]
+						yC[xCs.name.text()].state = 'ENABLED'
+						yC[xCs.name.text()].config = [:]
+					}
 					if(controllerServicesMap[xCs.name.text().toLowerCase().trim()].containsKey(xProp.key.text().toLowerCase().trim())){
 
 
@@ -408,16 +393,38 @@ def static parseGrouprecursive(processorGroupMap,node,y,rootgroupName) {
 /*Loads all control services in a list by REST API
 ------------------------------------------------
 */
-def static loadControlServices(nifiControlServices,nifiapiurl,node){
-
-	def resp = nifiapiurl.get(path: "controller/controller-services/"+node);
-	assert resp.status == 200
-
-	resp.data.controllerServices.each { pGs ->
-
-		nifiControlServices.add(pGs.name)
-
+def static loadControlServices(nifiControlServices,nifiapiurl){
+	
+	try{
+		
+		def resp = nifiapiurl.get(path: "controller/controller-services/NODE");
+		assert resp.status == 200
+	
+		resp.data.controllerServices.each { pGs ->
+	
+			nifiControlServices.add(pGs.name)
+	
+		}
+	}catch (Exception e){
+		assert true
+		assert e in Exception	
 	}
+	
+	try{
+		def resp1 = nifiapiurl.get(path: "controller/controller-services/NCM");
+		assert resp1.status == 200
+	
+		resp1.data.controllerServices.each { pGs ->
+	
+			nifiControlServices.add(pGs.name)
+	
+		}
+	
+	}catch (Exception e){
+		assert true
+		assert e in Exception
+	}
+	
 }
 
 
@@ -491,18 +498,10 @@ def static parseProcessors(processorGroupMap,groupName, rootgroupName, node,y) {
 							}
 						}
 
-						//if (it.value.size() > 0) {
-
-							//y.processGroups[rootgroupName].processors[p.name.text()].config[it.key.text()] = it.value.size() == 0 ? "REPLACEME" : propertiesMap.get(it.key.text().toLowerCase().trim());
-
-
-							//y.processGroups[groupName].processors[p.name.text()].config[it.key.text()] = it.value.size() == 0 ? "No Value Found" : it.value.text()
-
-						//}else{
-							//def repl='REPLACEME'
+						
 							y.processGroups[rootgroupName].processors[p.name.text()].config[it.key.text()]=String.valueOf('REPLACEME')
 
-						//}
+						
 
 					}else{
 						
@@ -549,9 +548,9 @@ def static parseProcessors(processorGroupMap,groupName, rootgroupName, node,y) {
 /*
  * For each properties file line
  * 		if it has processgroups, processors and config
- * 				 Extract the data and populate in processgroup map			
+ * 				 Extract the data and populate in processgroup map
  * 		if it has controllerServices and config
- * 				 Extract the data and populate in controllerServicesMap map	
+ * 				 Extract the data and populate in controllerServicesMap map
  */
 
 def static loadPropertiesMap(propertiesFile,processorGroupMap,controllerServicesMap){
