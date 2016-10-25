@@ -1,4 +1,3 @@
-
 import groovy.json.JsonSlurper
 import groovyx.net.http.RESTClient
 import java.nio.file.Path
@@ -35,7 +34,7 @@ cli.with {
 	'Properties File',
 	args:1, argName:'name', type:String.class
 	n longOpt: 'nifiapi',
-	'NiFi REST API (override), e.g. http://example.com:9090/nifi-api defaults to http://localhost:8080/nifiapi This works only on unsecured nifi',
+	'NiFi REST API (override), e.g. http://example.com:9090/nifi-api defaults to http://localhost:8080/nifiapi ',
 	args:1, argName:'http://host:port', type:String.class
 	f1 longOpt: 'fileout',
 	'yml Output file, eg. MyOutputFile.yml ',
@@ -104,56 +103,76 @@ if (opts.fileout) {
 }
 
 
-/*Nifi api url
- *
-------------------------------------------*/
 
-def nifiuri;
-if(opts.nifiapi){
-	nifiuri=opts.nifiapi
-
-	//Check for Secured/Unsecured nifi
-	if (nifiuri.startsWith("https")){
-
-		//Secured Connection
-		nifiapiurl = new RESTClient(opts.nifiapi)
-
-		//Secured connection requires username and password to connect
-		def user  = opts.username
-		def pass  = opts.password
-		nifiapiurl.ignoreSSLIssues()
-		assert user : 'Authorization user must be provided for Secured Nifi'
-		assert pass : 'Authorization password must be provided for Secured Nifi'
-		def authbody = [username : "$user", password : "$pass"]
+/*nifi url Validation New
+ * -----------------------
+ */
 
 
-		resp = nifiapiurl.post (
-				path: "access/token",
-				body: authbody,
-				requestContentType: URLENC
-				)
+def nifiHostPort = opts.'nifi-api' ?: opts.nifiapi
 
-		assert resp.status == 201
+if (!nifiHostPort) {
+	
+	
+	nifiHostPort="http://localhost:8080/nifi-api"
+	nifiapiurl = new RESTClient("http://localhost:8080/nifi-api")
+	
+	/*println 'Please specify a NiFi instance URL in the deployment spec file or via CLI'
+	System.exit(-1)*/
+  }else{
+  
+  nifiHostPort = nifiHostPort.endsWith('/') ? nifiHostPort[0..-2] : nifiHostPort
+  
+  assert nifiHostPort : "No NiFI REST API endpoint provided"
+  
+  
+  if (nifiHostPort.startsWith("https")){
+	  
+			  //Secured Connection
+			  nifiapiurl = new RESTClient("$nifiHostPort/nifi-api/");
+	  
+			  //Secured connection requires username and password to connect
+			  def user  = opts.username;
+			  def pass  = opts.password;
+			  nifiapiurl.ignoreSSLIssues();
+			  assert user : 'Authorization user must be provided for Secured Nifi';
+			  assert pass : 'Authorization password must be provided for Secured Nifi';
+			  def authbody = [username : "$user", password : "$pass"];
+	  
+	  
+			  resp = nifiapiurl.post (
+					  path: "access/token",
+					  body: authbody,
+					  requestContentType: URLENC
+					  );
+	  
+			  assert resp.status == 201;
+	  
+	  
+			  //get response bearer token and set our header
+			  nifiapiurl.defaultRequestHeaders.'Authorization' = "Bearer " + resp.data.text
+	  
+	  
+		  }else{
+		  //unsecured Connection
+		  nifiapiurl = new RESTClient("$nifiHostPort/nifi-api/")
+  
+	  }
+  
+  
+  }
 
 
-		//get response bearer token and set our header
-		nifiapiurl.defaultRequestHeaders.'Authorization' = "Bearer " + resp.data.text
 
 
-	}else{
-		//unsecured Connection
-		nifiapiurl = new RESTClient(opts.nifiapi)
 
-	}
 
-}else{
 
-		//if url is not specified defaulted to localhost
 
-		nifiuri="http://localhost:8080/nifi-api"
-		nifiapiurl = new RESTClient("http://localhost:8080/nifi-api")
-}
 
+
+//get response bearer token and set our header
+nifi.defaultRequestHeaders.'Authorization' = "Bearer " + resp.data.text
 
 /*Define the root variable
 ------------------------*/
@@ -181,7 +200,7 @@ loadPropertiesMap(propertiesFile,processorGroupMap,controllerServicesMap)
 
 y.nifi = [:]
 
-y.nifi.url= nifiuri;
+y.nifi.url= nifiHostPort;
 
 y.nifi.clientId='REPLACEME';
 
@@ -605,12 +624,12 @@ def static loadPropertiesMap(propertiesFile,processorGroupMap,controllerServices
 			def configValue = config.substring(config.toString().indexOf("=")).replaceAll("=", "")
 
 			def configValMap= [:];
-			configValMap.putAt(configName,configValue)
+			configValMap.putAt(configName,"REPLACEME")
 			if(controllerServicesMap.containsKey(cServices)){
 
 
 
-				controllerServicesMap[cServices].putAt(configName, configValue)
+				controllerServicesMap[cServices].putAt(configName, "REPLACEME")
 
 
 			}else{
