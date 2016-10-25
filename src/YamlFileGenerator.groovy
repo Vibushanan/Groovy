@@ -103,6 +103,66 @@ if (opts.fileout) {
 }
 
 
+<<<<<<< HEAD
+
+/*nifi url Validation New
+ * -----------------------
+ */
+
+
+def nifiHostPort = opts.'nifi-api' ?: opts.nifiapi
+
+if (!nifiHostPort) {
+	
+	
+	nifiHostPort="http://localhost:8080/nifi-api"
+	nifiapiurl = new RESTClient("http://localhost:8080/nifi-api")
+	
+	/*println 'Please specify a NiFi instance URL in the deployment spec file or via CLI'
+	System.exit(-1)*/
+  }else{
+  
+  nifiHostPort = nifiHostPort.endsWith('/') ? nifiHostPort[0..-2] : nifiHostPort
+  
+  assert nifiHostPort : "No NiFI REST API endpoint provided"
+  
+  
+  if (nifiHostPort.startsWith("https")){
+	  
+			  //Secured Connection
+			  nifiapiurl = new RESTClient("$nifiHostPort/nifi-api/");
+	  
+			  //Secured connection requires username and password to connect
+			  def user  = opts.username;
+			  def pass  = opts.password;
+			  nifiapiurl.ignoreSSLIssues();
+			  assert user : 'Authorization user must be provided for Secured Nifi';
+			  assert pass : 'Authorization password must be provided for Secured Nifi';
+			  def authbody = [username : "$user", password : "$pass"];
+	  
+	  
+			  resp = nifiapiurl.post (
+					  path: "access/token",
+					  body: authbody,
+					  requestContentType: URLENC
+					  );
+	  
+			  assert resp.status == 201;
+	  
+	  
+			  //get response bearer token and set our header
+			  nifiapiurl.defaultRequestHeaders.'Authorization' = "Bearer " + resp.data.text
+	  
+	  
+		  }else{
+		  //unsecured Connection
+		  nifiapiurl = new RESTClient("$nifiHostPort/nifi-api/")
+  
+	  }
+  
+  
+  }
+=======
 
 /*nifi url Validation New
  * -----------------------
@@ -162,6 +222,7 @@ if (!nifiHostPort) {
   
   }
 
+>>>>>>> 04ee7c9d901cbc24a2215c4640e59781dd08c681
 
 
 
@@ -171,6 +232,10 @@ if (!nifiHostPort) {
 
 
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> 04ee7c9d901cbc24a2215c4640e59781dd08c681
 //get response bearer token and set our header
 nifi.defaultRequestHeaders.'Authorization' = "Bearer " + resp.data.text
 
